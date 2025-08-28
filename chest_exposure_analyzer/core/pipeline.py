@@ -11,6 +11,7 @@ import yaml
 from .models.yolo_detector import YoloDetector
 from .models.sam2_segmenter import SamSegmenter
 from .processors.prompt_generator import PromptGenerator
+from .processors.chest_analyzer import ChestExposureAnalyzer
 from .data_models import DetectionResult
 from ..utils.visualization import VisualizationUtils
 from ..utils.image_utils import ImageUtils
@@ -32,6 +33,10 @@ class ChestExposurePipeline:
         self.yolo_detector = None
         self.sam_segmenter = None
         self.prompt_generator = PromptGenerator()
+        self.chest_analyzer = ChestExposureAnalyzer(
+            min_intersection_ratio=self.config["exposure_detection"]["min_intersection_ratio"],
+            min_intersection_area=self.config["exposure_detection"]["min_intersection_area"],
+        )
 
         # Initialize utilities
         self.visualizer = VisualizationUtils()
@@ -117,6 +122,7 @@ class ChestExposurePipeline:
             "output_dir": image_output_dir,
             "detections": [],
             "segmentation_results": [],
+            "exposure_analysis": [],
         }
 
         # Step 1: YOLO pose detection
@@ -145,6 +151,18 @@ class ChestExposurePipeline:
         if self.config["visualization"]["save_intermediate_steps"]:
             self._create_summary_visualization(image, results, image_output_dir)
 
+        # Step 4: Chest exposure analysis for all persons
+        print("Step 4: Analyzing chest exposure...")
+        exposure_results = self._analyze_chest_exposure_for_image(image, results)
+        results["exposure_analysis"] = exposure_results
+
+        # Step 5: Check if any person shows chest exposure and copy to exposed folder
+        if self._should_copy_to_exposed(exposure_results):
+            exposed_dir = self.config["paths"]["exposed_dir"]
+            self.chest_analyzer.copy_results_to_exposed_folder(
+                image_output_dir, exposed_dir, base_name
+            )
+
         return results
 
     def _process_single_detection(
@@ -164,6 +182,7 @@ class ChestExposurePipeline:
             "detection": detection,
             "prompts": None,
             "segmentation_mask": None,
+            "chest_triangle_mask": None,
             "output_dir": output_dir,
         }
 
@@ -193,6 +212,12 @@ class ChestExposurePipeline:
             print(f"  Segmentation completed. Mask area: {mask_area} pixels")
         else:
             print(f"  Segmentation failed for Person {person_id}")
+
+        # Step 3.5: Generate chest triangle mask for analysis
+        chest_triangle_mask = self.prompt_generator.generate_chest_triangle_mask(
+            detection, (image.shape[0], image.shape[1])
+        )
+        result["chest_triangle_mask"] = chest_triangle_mask
 
         # Step 4: Save visualizations
         if self.config["visualization"]["save_intermediate_steps"]:
@@ -327,6 +352,81 @@ class ChestExposurePipeline:
             f"Batch processing complete. Processed {len(all_results)}/{len(image_files)} images"
         )
         return all_results
+
+    def _analyze_chest_exposure_for_image(
+        self, image: np.ndarray, results: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Analyze chest exposure for all persons in the image.
+
+        Args:
+            image: Original input image
+            results: Processing results containing segmentation data
+
+        Returns:
+            List of exposure analysis results for each person
+        """
+        exposure_results = []
+
+        for seg_result in results["segmentation_results"]:
+            # Get masks
+            sam2_mask = seg_result.get("segmentation_mask")
+            chest_mask = seg_result.get("chest_triangle_mask")
+            detection = seg_result.get("detection")
+
+            # Skip if essential components are missing
+            if sam2_mask is None or chest_mask is None or detection is None:
+                continue
+
+            # Perform exposure analysis
+            analysis_result = self.chest_analyzer.analyze_chest_exposure(
+                sam2_mask, chest_mask, detection
+            )
+
+            # Save exposure visualization if requested
+            if self.config["exposure_detection"]["save_exposure_analysis"]:
+                exposure_vis = self.chest_analyzer.create_exposure_visualization(
+                    image, analysis_result, sam2_mask, chest_mask
+                )
+
+                # Save exposure analysis image
+                output_dir = seg_result["output_dir"]
+                exposure_path = os.path.join(output_dir, "exposure_analysis.png")
+                cv2.imwrite(exposure_path, exposure_vis)
+
+            # Add to results
+            exposure_results.append(analysis_result)
+
+            # Print analysis summary
+            person_id = detection.person_id
+            is_exposed = analysis_result["is_exposed"]
+            confidence = analysis_result["analysis_confidence"]
+            intersection_area = analysis_result["intersection_area"]
+
+            status = "EXPOSED" if is_exposed else "NOT EXPOSED"
+            print(f"  Person {person_id}: {status} (confidence: {confidence:.2f}, intersection: {intersection_area}px)")
+
+        return exposure_results
+
+    def _should_copy_to_exposed(self, exposure_results: List[Dict[str, Any]]) -> bool:
+        """
+        Determine if image should be copied to exposed folder.
+
+        Args:
+            exposure_results: List of exposure analysis results
+
+        Returns:
+            True if any person shows confident chest exposure
+        """
+        min_confidence = self.config["exposure_detection"]["min_confidence_threshold"]
+        should_copy = self.chest_analyzer.should_copy_to_exposed_folder(
+            exposure_results, min_confidence
+        )
+
+        if should_copy:
+            print("  → Image contains chest exposure, copying to exposed folder")
+
+        return should_copy
 
     def get_pipeline_info(self) -> Dict[str, Any]:
         """Get information about the pipeline configuration and models."""
