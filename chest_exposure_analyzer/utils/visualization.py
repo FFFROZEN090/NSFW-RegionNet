@@ -47,7 +47,7 @@ class VisualizationUtils:
     @staticmethod
     def draw_keypoints(
         image: np.ndarray, 
-        detection: DetectionResult, 
+        detections: List[DetectionResult], 
         draw_skeleton: bool = True,
         draw_labels: bool = True,
         keypoint_radius: int = 5,
@@ -58,7 +58,7 @@ class VisualizationUtils:
         
         Args:
             image: Input image (BGR format)
-            detection: Detection result containing keypoints
+            detections: List of detection results containing keypoints
             draw_skeleton: Whether to draw skeleton connections
             draw_labels: Whether to draw keypoint labels
             keypoint_radius: Radius of keypoint circles
@@ -69,19 +69,21 @@ class VisualizationUtils:
         """
         img_copy = image.copy()
         
-        # Draw skeleton connections first (so they appear under keypoints)
-        if draw_skeleton:
-            img_copy = VisualizationUtils._draw_skeleton(
-                img_copy, detection, line_thickness
-            )
-        
-        # Draw keypoints
-        for i, keypoint in enumerate(detection.keypoints):
-            if keypoint.score > 0.3:  # Only draw confident keypoints
-                color = VisualizationUtils.KEYPOINT_COLORS[i % len(VisualizationUtils.KEYPOINT_COLORS)]
-                
-                # Draw keypoint circle
-                cv2.circle(img_copy, (keypoint.x, keypoint.y), keypoint_radius, color, -1)
+        # Process each detection
+        for detection in detections:
+            # Draw skeleton connections first (so they appear under keypoints)
+            if draw_skeleton:
+                img_copy = VisualizationUtils._draw_skeleton(
+                    img_copy, detection, line_thickness
+                )
+            
+            # Draw keypoints
+            for i, keypoint in enumerate(detection.keypoints):
+                if keypoint.score > 0.3:  # Only draw confident keypoints
+                    color = VisualizationUtils.KEYPOINT_COLORS[i % len(VisualizationUtils.KEYPOINT_COLORS)]
+                    
+                    # Draw keypoint circle
+                    cv2.circle(img_copy, (keypoint.x, keypoint.y), keypoint_radius, color, -1)
                 
                 # Draw confidence circle (thicker for higher confidence)
                 confidence_thickness = max(1, int(keypoint.score * 3))
@@ -163,6 +165,23 @@ class VisualizationUtils:
             img_copy, label, (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness
         )
+        
+        return img_copy
+    
+    @staticmethod
+    def draw_bounding_boxes(
+        image: np.ndarray, 
+        detections: List[DetectionResult], 
+        color: Tuple[int, int, int] = (255, 0, 0),
+        thickness: int = 2
+    ) -> np.ndarray:
+        """Draw bounding boxes around multiple detections."""
+        img_copy = image.copy()
+        
+        for detection in detections:
+            img_copy = VisualizationUtils.draw_bounding_box(
+                img_copy, detection, color, thickness
+            )
         
         return img_copy
     
@@ -326,3 +345,36 @@ class VisualizationUtils:
                 print(f"Saved {name} visualization to: {save_path}")
         
         return visualizations
+    
+    @staticmethod
+    def create_combined_visualization(
+        image: np.ndarray,
+        detection: DetectionResult,
+        points: np.ndarray,
+        labels: np.ndarray,
+        mask: np.ndarray
+    ) -> np.ndarray:
+        """Create a combined visualization showing keypoints, prompts and segmentation mask."""
+        # Start with original image
+        combined_img = image.copy()
+        
+        # Draw keypoints and skeleton
+        combined_img = VisualizationUtils.draw_keypoints(combined_img, [detection])
+        
+        # Draw bounding box
+        combined_img = VisualizationUtils.draw_bounding_box(combined_img, detection)
+        
+        # Draw prompts
+        combined_img = VisualizationUtils.draw_prompts(combined_img, points, labels)
+        
+        # Overlay segmentation mask with transparency
+        if mask is not None and mask.max() > 0:
+            # Create colored mask overlay
+            mask_colored = np.zeros_like(image)
+            mask_colored[mask > 0] = [0, 255, 0]  # Green overlay
+            
+            # Apply mask with transparency
+            alpha = 0.3
+            combined_img = cv2.addWeighted(combined_img, 1 - alpha, mask_colored, alpha, 0)
+        
+        return combined_img

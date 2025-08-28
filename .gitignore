@@ -177,3 +177,9 @@ notebooks/*.ipynb
 # OS
 .DS_Store
 Thumbs.db
+
+# Model weights
+chest_exposure_analyzer/weights/*.pt
+chest_exposure_analyzer/weights/*.pth
+*.pt
+*.pth
