@@ -36,6 +36,11 @@ exposure_detection:
   min_intersection_area: 100    # Minimum intersection area in pixels to consider exposed
   min_confidence_threshold: 0.5 # Minimum confidence to copy to exposed folder
   save_exposure_analysis: true  # Save exposure analysis visualizations
+  
+  # Morphological operations for mask refinement
+  morphology_kernel_size: 5     # Size of morphological operation kernel
+  opening_iterations: 1         # Opening iterations to remove noise
+  closing_iterations: 2         # Closing iterations to fill gaps
 
 # Visualization settings
 visualization:

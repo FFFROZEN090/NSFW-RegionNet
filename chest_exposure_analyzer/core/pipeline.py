@@ -36,6 +36,9 @@ class ChestExposurePipeline:
         self.chest_analyzer = ChestExposureAnalyzer(
             min_intersection_ratio=self.config["exposure_detection"]["min_intersection_ratio"],
             min_intersection_area=self.config["exposure_detection"]["min_intersection_area"],
+            morphology_kernel_size=self.config["exposure_detection"]["morphology_kernel_size"],
+            opening_iterations=self.config["exposure_detection"]["opening_iterations"],
+            closing_iterations=self.config["exposure_detection"]["closing_iterations"],
         )
 
         # Initialize utilities
@@ -393,6 +396,16 @@ class ChestExposurePipeline:
                 output_dir = seg_result["output_dir"]
                 exposure_path = os.path.join(output_dir, "exposure_analysis.png")
                 cv2.imwrite(exposure_path, exposure_vis)
+
+                # Save morphological processing comparison if mask3 data available
+                if "mask3_raw" in analysis_result and "mask3_refined" in analysis_result:
+                    morphology_comparison = self.chest_analyzer.create_morphology_comparison_visualization(
+                        image, 
+                        analysis_result["mask3_raw"], 
+                        analysis_result["mask3_refined"]
+                    )
+                    morphology_path = os.path.join(output_dir, "morphology_comparison.png")
+                    cv2.imwrite(morphology_path, morphology_comparison)
 
             # Add to results
             exposure_results.append(analysis_result)
