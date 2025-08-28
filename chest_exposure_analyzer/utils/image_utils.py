@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 
 class ImageUtils:
     """Utility class for image operations."""
-    
+
     @staticmethod
     def load_image(image_path: str) -> Optional[np.ndarray]:
         """Load image from file path."""
@@ -18,7 +18,7 @@ class ImageUtils:
             return image
         except Exception:
             return None
-    
+
     @staticmethod
     def save_image(image: np.ndarray, output_path: str) -> bool:
         """Save image to file path."""
@@ -27,21 +27,21 @@ class ImageUtils:
             return True
         except Exception:
             return False
-    
+
     @staticmethod
     def resize_image(image: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
         """Resize image to target size."""
         return cv2.resize(image, target_size)
-    
+
     @staticmethod
     def get_image_info(image: np.ndarray) -> dict:
         """Get image information."""
         height, width = image.shape[:2]
         channels = image.shape[2] if len(image.shape) > 2 else 1
-        
+
         return {
-            'width': width,
-            'height': height,
-            'channels': channels,
-            'shape': image.shape
+            "width": width,
+            "height": height,
+            "channels": channels,
+            "shape": image.shape,
         }
