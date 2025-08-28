@@ -23,6 +23,8 @@ class ChestExposureAnalyzer:
         closing_iterations: int = 2,
         mosaic_block_size: int = 15,
         mosaic_intensity: float = 1.0,
+        mosaic_dilation_kernel_size: int = 10,
+        mosaic_dilation_iterations: int = 2,
     ):
         """
         Initialize chest exposure analyzer.
@@ -35,6 +37,8 @@ class ChestExposureAnalyzer:
             closing_iterations: Number of closing iterations to fill gaps
             mosaic_block_size: Size of mosaic blocks for censoring
             mosaic_intensity: Intensity of mosaic effect (1.0 = full mosaic, 0.0 = no effect)
+            mosaic_dilation_kernel_size: Size of dilation kernel to expand mosaic regions
+            mosaic_dilation_iterations: Number of dilation iterations to expand coverage
         """
         self.min_intersection_ratio = min_intersection_ratio
         self.min_intersection_area = min_intersection_area
@@ -43,6 +47,8 @@ class ChestExposureAnalyzer:
         self.closing_iterations = closing_iterations
         self.mosaic_block_size = mosaic_block_size
         self.mosaic_intensity = mosaic_intensity
+        self.mosaic_dilation_kernel_size = mosaic_dilation_kernel_size
+        self.mosaic_dilation_iterations = mosaic_dilation_iterations
 
     def analyze_chest_exposure(
         self,
@@ -167,28 +173,63 @@ class ChestExposureAnalyzer:
         # Convert back to boolean for consistency
         return refined_mask > 0
 
+    def _expand_mosaic_mask(self, mask: np.ndarray) -> np.ndarray:
+        """
+        Expand mosaic mask using dilation to cover larger areas.
+        
+        Args:
+            mask: Original binary mask
+            
+        Returns:
+            Expanded mask with larger coverage area
+        """
+        # Convert boolean mask to uint8 for OpenCV operations
+        if mask.dtype == bool:
+            mask_uint8 = mask.astype(np.uint8) * 255
+        else:
+            mask_uint8 = mask
+            
+        # Create dilation kernel
+        dilation_kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, 
+            (self.mosaic_dilation_kernel_size, self.mosaic_dilation_kernel_size)
+        )
+        
+        # Apply dilation to expand the regions
+        expanded_mask = cv2.dilate(
+            mask_uint8,
+            dilation_kernel,
+            iterations=self.mosaic_dilation_iterations
+        )
+        
+        # Convert back to boolean
+        return expanded_mask > 0
+
     def apply_mosaic_to_regions(
         self, image: np.ndarray, mask3_refined: np.ndarray
     ) -> np.ndarray:
         """
-        Apply mosaic effect to regions defined by mask3_refined.
+        Apply mosaic effect to regions defined by mask3_refined with dilation expansion.
 
         Args:
             image: Original image to apply mosaic to
             mask3_refined: Boolean mask defining regions to mosaic
 
         Returns:
-            Image with mosaic applied to masked regions
+            Image with mosaic applied to expanded masked regions
         """
         if not np.any(mask3_refined):
             # No regions to mosaic
             return image.copy()
 
+        # Apply dilation to expand the mosaic regions
+        expanded_mask = self._expand_mosaic_mask(mask3_refined)
+
         mosaic_image = image.copy()
         h, w = image.shape[:2]
 
         # Get bounding box of all masked regions for efficiency
-        y_coords, x_coords = np.where(mask3_refined)
+        y_coords, x_coords = np.where(expanded_mask)
         if len(y_coords) == 0:
             return mosaic_image
 
@@ -199,8 +240,8 @@ class ChestExposureAnalyzer:
                 y_end = min(y + self.mosaic_block_size, h)
                 x_end = min(x + self.mosaic_block_size, w)
 
-                # Check if this block intersects with mask
-                block_mask = mask3_refined[y:y_end, x:x_end]
+                # Check if this block intersects with expanded mask
+                block_mask = expanded_mask[y:y_end, x:x_end]
                 if np.any(block_mask):
                     # Calculate average color for this block
                     block = image[y:y_end, x:x_end]

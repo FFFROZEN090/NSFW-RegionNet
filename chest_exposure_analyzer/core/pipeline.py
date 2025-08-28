@@ -41,6 +41,8 @@ class ChestExposurePipeline:
             closing_iterations=self.config["exposure_detection"]["closing_iterations"],
             mosaic_block_size=self.config["exposure_detection"]["mosaic_block_size"],
             mosaic_intensity=self.config["exposure_detection"]["mosaic_intensity"],
+            mosaic_dilation_kernel_size=self.config["exposure_detection"]["mosaic_dilation_kernel_size"],
+            mosaic_dilation_iterations=self.config["exposure_detection"]["mosaic_dilation_iterations"],
         )
 
         # Initialize utilities

@@ -46,6 +46,10 @@ exposure_detection:
   mosaic_block_size: 30         # Size of mosaic blocks in pixels
   mosaic_intensity: 1.0         # Mosaic intensity (1.0 = full mosaic, 0.0 = no effect)
   save_mosaic_comparison: true  # Save before/after mosaic comparison
+  
+  # Mosaic region expansion parameters
+  mosaic_dilation_kernel_size: 10    # Size of dilation kernel to expand mosaic regions
+  mosaic_dilation_iterations: 2      # Number of dilation iterations for coverage expansion
 
 # Visualization settings
 visualization:
