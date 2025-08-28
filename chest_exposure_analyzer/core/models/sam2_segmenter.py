@@ -4,6 +4,7 @@ Segment Anything Model 2 (SAM2) wrapper for image and video segmentation.
 
 import os
 import sys
+import time
 from typing import Optional, Tuple
 import numpy as np
 import torch
@@ -90,7 +91,7 @@ class SamSegmenter:
         self, image: np.ndarray, points: np.ndarray, labels: np.ndarray
     ) -> np.ndarray:
         """
-        Generate segmentation mask from point prompts.
+        Generate segmentation mask from point prompts with timing monitoring.
 
         Args:
             image: Input image as numpy array (H, W, C) in RGB format
@@ -100,47 +101,77 @@ class SamSegmenter:
         Returns:
             best_mask: Binary segmentation mask as numpy array (H, W) with boolean values
         """
+        # Start timing
+        start_time = time.time()
+        
         if self.predictor is None:
             # Mock implementation for testing when SAM2 is not available
-            return self._generate_mock_mask(image, points, labels)
+            result = self._generate_mock_mask(image, points, labels)
+            end_time = time.time()
+            print(f"  SAM2 Mock segmentation time: {(end_time - start_time)*1000:.2f} ms")
+            return result
 
         if len(points) == 0:
             # No points provided, return empty mask
+            end_time = time.time()
+            print(f"  SAM2 segmentation time (no points): {(end_time - start_time)*1000:.2f} ms")
             return np.zeros((image.shape[0], image.shape[1]), dtype=bool)
 
         try:
             # Convert image to RGB if needed
+            image_prep_start = time.time()
             if len(image.shape) == 3 and image.shape[2] == 3:
                 # Assume BGR input, convert to RGB for SAM2
                 image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             else:
                 image_rgb = image
+            image_prep_time = (time.time() - image_prep_start) * 1000
 
             # Set image for prediction
+            set_image_start = time.time()
             self.predictor.set_image(image_rgb)
+            set_image_time = (time.time() - set_image_start) * 1000
 
             # Run prediction with point prompts
+            predict_start = time.time()
             masks, scores, logits = self.predictor.predict(
                 point_coords=points,
                 point_labels=labels,
                 multimask_output=True,  # Get multiple mask options
             )
+            predict_time = (time.time() - predict_start) * 1000
 
             # Select best mask based on confidence score
+            post_process_start = time.time()
             if len(masks) > 0:
                 best_idx = np.argmax(scores)
                 best_mask = masks[best_idx]
-
+                post_process_time = (time.time() - post_process_start) * 1000
+                
+                # Calculate total time
+                total_time = time.time() - start_time
+                
                 print(
-                    f"SAM2 segmentation complete. Best mask score: {scores[best_idx]:.3f}"
+                    f"  SAM2 segmentation complete. Best mask score: {scores[best_idx]:.3f}"
                 )
+                print(f"  SAM2 timing breakdown:")
+                print(f"    Image preparation: {image_prep_time:.2f} ms")
+                print(f"    Set image: {set_image_time:.2f} ms")
+                print(f"    Prediction: {predict_time:.2f} ms")
+                print(f"    Post-processing: {post_process_time:.2f} ms")
+                print(f"    Total SAM2 time: {total_time*1000:.2f} ms")
+                
                 return best_mask.astype(bool)
             else:
+                total_time = time.time() - start_time
                 print("SAM2 did not generate any masks")
+                print(f"  SAM2 total time: {total_time*1000:.2f} ms")
                 return np.zeros((image.shape[0], image.shape[1]), dtype=bool)
 
         except Exception as e:
+            total_time = time.time() - start_time
             print(f"Error during SAM2 segmentation: {e}")
+            print(f"  SAM2 error handling time: {total_time*1000:.2f} ms")
             return self._generate_mock_mask(image, points, labels)
 
     def _generate_mock_mask(
