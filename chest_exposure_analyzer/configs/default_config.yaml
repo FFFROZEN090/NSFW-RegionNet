@@ -43,7 +43,7 @@ exposure_detection:
   closing_iterations: 2         # Closing iterations to fill gaps
   
   # Mosaic censoring parameters
-  mosaic_block_size: 15         # Size of mosaic blocks in pixels
+  mosaic_block_size: 30         # Size of mosaic blocks in pixels
   mosaic_intensity: 1.0         # Mosaic intensity (1.0 = full mosaic, 0.0 = no effect)
   save_mosaic_comparison: true  # Save before/after mosaic comparison
 

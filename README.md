@@ -1,263 +1,239 @@
 # NSFW-RegionNet
 
-A computer vision system for content filtering that uses YOLOv11-Pose for human keypoint detection and SAM2 (Segment Anything Model 2) for precise skin region segmentation.
+基于计算机视觉的内容过滤系统，使用 YOLOv11-Pose 进行人体关键点检测，SAM2 进行精确皮肤区域分割，并实现胸部暴露检测和自动马赛克处理。
 
-## 🚀 Quick Start
+## 安装配置
 
-### 1. Automated Setup (Recommended)
+### 自动安装（推荐）
 ```bash
 git clone git@github.com:FFFROZEN090/NSFW-RegionNet.git
 cd NSFW-RegionNet
 python setup.py
 ```
 
-### 2. Manual Setup
+### 手动安装
 ```bash
-# Create virtual environment
+# 创建虚拟环境
 python -m venv NSFW-RegionNet
-source NSFW-RegionNet/bin/activate  # On macOS/Linux
-# NSFW-RegionNet\Scripts\activate   # On Windows
+source NSFW-RegionNet/bin/activate  # macOS/Linux
+# NSFW-RegionNet\Scripts\activate   # Windows
 
-# Install dependencies
+# 安装依赖
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Download SAM2 model weights (856MB)
+# 下载 SAM2 模型权重 (856MB)
 mkdir -p chest_exposure_analyzer/weights
 curl -L https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt \
   -o chest_exposure_analyzer/weights/sam2_hiera_large.pt
 ```
 
-### 3. Run Demo
+## 核心使用方法
+
+### 1. 演示模式
 ```bash
 source NSFW-RegionNet/bin/activate
 python chest_exposure_analyzer/main.py --demo
 ```
 
-## 📋 Usage
-
-### Process Single Image
+### 2. 单张图片处理
 ```bash
 python chest_exposure_analyzer/main.py --image path/to/image.jpg
 ```
 
-### Process Directory of Images
+### 3. 生产部署模式
 ```bash
-python chest_exposure_analyzer/main.py --input_dir path/to/images/
+python chest_exposure_analyzer/main.py --deploy input_folder/ output_folder/
 ```
+此模式自动输出：
+- 有暴露内容的图片：自动打马赛克版本
+- 正常图片：保持原始版本
+- 无调试文件，仅输出最终结果
 
-### Custom Output Directory
+### 4. Jupyter 交互演示
 ```bash
-python chest_exposure_analyzer/main.py --demo --output_dir results/
+jupyter notebook demo_pipeline.ipynb
 ```
 
-## 🏗️ Architecture
+## 处理流程
 
-### Pipeline Overview
-1. **YOLO11-Pose Detection**: Detects human keypoints with 17-point skeleton
-2. **Prompt Generation**: Converts facial keypoints to SAM2 prompts (positive facial points, negative background points)
-3. **SAM2 Segmentation**: Uses prompts to generate precise skin region masks
-4. **Visualization**: Creates comprehensive analysis outputs
+1. **姿态检测**：YOLOv11-Pose 检测人体 17 个关键点
+2. **提示生成**：将关键点转换为 SAM2 提示点
+3. **皮肤分割**：SAM2 基于提示点分割皮肤区域
+4. **胸部区域分析**：生成解剖学正确的胸部三角形区域
+5. **暴露检测**：分析皮肤与胸部区域交集
+6. **形态学处理**：开运算和闭运算优化检测区域
+7. **马赛克处理**：对检测到的暴露区域应用马赛克
 
-### Key Components
+## 程序化接口
 
-#### Models
-- **YoloDetector** (`core/models/yolo_detector.py`): YOLOv11-Pose wrapper for human pose detection
-- **SamSegmenter** (`core/models/sam2_segmenter.py`): SAM2 wrapper for segmentation with point prompts
-- **PromptGenerator** (`core/processors/prompt_generator.py`): Converts keypoints to SAM2 prompts
+### 基础处理
+```python
+from chest_exposure_analyzer.core.pipeline import ChestExposurePipeline
 
-#### Pipeline
-- **ChestExposurePipeline** (`core/pipeline.py`): Orchestrates the complete processing flow
-- **VisualizationUtils** (`utils/visualization.py`): Comprehensive visualization tools
+# 初始化管道
+pipeline = ChestExposurePipeline()
 
-## 📊 Output Structure
+# 处理单张图片
+results = pipeline.process_image("path/to/image.jpg")
 
-For each processed image, the system generates:
-
-```
-data/output/
-└── [image_name]/
-    ├── person_1/
-    │   ├── keypoints.png          # YOLO keypoint detection
-    │   ├── bounding_box.png       # Person bounding box
-    │   ├── prompts.png           # SAM2 prompt points (green=+, red=-)
-    │   ├── chest_triangle.png    # Chest region triangle
-    │   ├── sam2_segmentation.png # SAM2 segmentation result
-    │   └── combined.png          # All components combined
-    ├── person_2/
-    │   └── ...
-    └── summary.png               # Multi-person overview
+# 批量处理
+results = pipeline.process_batch("input_dir", "output_dir")
 ```
 
-## 🔧 Configuration
+### 生产部署接口
+```python
+# 自动处理和马赛克
+stats = pipeline.process_for_deployment("input_dir", "output_dir")
 
-Edit `chest_exposure_analyzer/configs/default_config.yaml`:
+print(f"处理总数: {stats['processed']}")
+print(f"打码图片: {stats['exposed']}")
+print(f"原始图片: {stats['processed'] - stats['exposed']}")
+```
+
+### 暴露分析
+```python
+from chest_exposure_analyzer.core.processors.chest_analyzer import ChestExposureAnalyzer
+
+analyzer = ChestExposureAnalyzer(
+    min_intersection_ratio=0.01,
+    min_intersection_area=100,
+    mosaic_block_size=30
+)
+
+# 分析暴露情况
+analysis = analyzer.analyze_chest_exposure(skin_mask, chest_mask, detection)
+print(f"是否暴露: {analysis['is_exposed']}")
+print(f"置信度: {analysis['analysis_confidence']}")
+
+# 应用马赛克
+mosaicked_image = analyzer.apply_mosaic_to_regions(image, mask3_refined)
+```
+
+## 配置参数
+
+编辑 `chest_exposure_analyzer/configs/default_config.yaml`：
 
 ```yaml
-# Model paths
+# 模型路径
 models:
   yolo_model_path: "weights/yolov11l-pose.pt"
   sam2_model_path: "chest_exposure_analyzer/weights/sam2_hiera_large.pt"
-  sam2_model_type: "hiera_large"
 
-# Detection parameters
+# 检测参数
 detection:
   confidence_threshold: 0.5
-  iou_threshold: 0.45
-  max_detections: 10
 
-# Segmentation parameters
-segmentation:
-  multimask_output: true
+# 暴露检测参数
+exposure_detection:
+  min_intersection_ratio: 0.01    # 最小交集比例
+  min_intersection_area: 100      # 最小交集面积（像素）
+  min_confidence_threshold: 0.5   # 最小置信度阈值
   
-# Visualization settings
-visualization:
-  keypoint_radius: 5
-  line_thickness: 2
-  alpha_overlay: 0.5
-  save_intermediate_steps: true
+  # 形态学操作参数
+  morphology_kernel_size: 5       # 形态学操作核大小
+  opening_iterations: 1           # 开运算迭代次数
+  closing_iterations: 2           # 闭运算迭代次数
+  
+  # 马赛克参数
+  mosaic_block_size: 30          # 马赛克块大小
+  mosaic_intensity: 1.0          # 马赛克强度
 ```
 
-## 📦 Dependencies
+## 输出结构
 
-### Core Requirements
-- **Python**: 3.8+ (tested with 3.12)
-- **PyTorch**: 2.0+ with torchvision
-- **OpenCV**: 4.8+ for image processing
-- **Ultralytics**: 8.0+ for YOLO11-Pose
-- **SAM2**: Facebook's Segment Anything Model 2
-
-### Full Dependencies
-- NumPy, Pillow, Matplotlib, scikit-image
-- PyYAML, Pydantic for configuration
-- Hydra, OmegaConf for SAM2
-- pytest, black, flake8 for development
-
-## 🎯 Features
-
-### Robust Detection
-- **Multi-person support**: Handles multiple people in a single image
-- **Confidence scoring**: Quality assessment for both detection and segmentation
-- **Fallback mechanisms**: Graceful degradation when models aren't available
-
-### Advanced Segmentation
-- **Prompt-based**: Uses facial keypoints as positive prompts for accurate skin detection
-- **Background-aware**: Intelligent negative prompt placement avoids false positives
-- **Quality scoring**: SAM2 confidence scores for segmentation assessment
-
-### Comprehensive Visualization
-- **Step-by-step outputs**: Every pipeline stage is visualized
-- **Multi-person summaries**: Combined visualizations for complex scenes
-- **Debug-friendly**: Detailed intermediate results for analysis
-
-## 🔍 Model Information
-
-### SAM2 Model Variants
-- `hiera_large` (default): 856MB, highest accuracy
-- `hiera_base_plus`: Smaller, faster alternative
-- `hiera_small`: Lightweight version
-- `hiera_tiny`: Minimal resource usage
-
-### YOLO11-Pose
-- Automatically downloads YOLOv11n-pose if custom weights not found
-- Supports custom trained models via `yolo_model_path` config
-
-## 🚨 Important Notes
-
-### Content Filtering Purpose
-This system is designed for **defensive security** and **content moderation** purposes. It helps platforms:
-- Detect potentially inappropriate content
-- Provide automated content filtering
-- Support human moderators with analysis tools
-
-### Privacy and Ethics
-- **No data storage**: Processes images locally without external transmission
-- **Configurable sensitivity**: Adjustable thresholds for different use cases
-- **Transparent processing**: All intermediate steps are visualizable
-
-## 🛠️ Development
-
-### Running Tests
-```bash
-source NSFW-RegionNet/bin/activate
-pytest chest_exposure_analyzer/tests/
+```
+data/output/
+└── [图片名称]/
+    ├── person_1/
+    │   ├── keypoints.png              # 关键点检测
+    │   ├── prompts.png               # SAM2 提示点
+    │   ├── chest_triangle.png        # 胸部三角区域
+    │   ├── sam2_segmentation.png     # 皮肤分割结果
+    │   ├── exposure_analysis.png     # 暴露分析
+    │   ├── morphology_comparison.png # 形态学处理对比
+    │   └── mosaic_comparison.png     # 马赛克处理对比
+    └── summary.png                   # 多人概览
 ```
 
-### Code Formatting
+## 主要组件
+
+### 核心模块
+- **ChestExposurePipeline**：主处理管道
+- **YoloDetector**：YOLO 姿态检测器
+- **SamSegmenter**：SAM2 分割器
+- **PromptGenerator**：提示点生成器
+- **ChestExposureAnalyzer**：暴露检测分析器
+
+### 关键功能
+- **多人支持**：单张图片处理多个人物
+- **置信度评分**：检测和分割质量评估
+- **自动马赛克**：检测到暴露内容自动处理
+- **形态学优化**：开闭运算优化检测区域
+- **可视化调试**：每个处理步骤可视化
+
+## 性能指标
+
+### 处理时间（CPU）
+- 单人图片：3-5 秒
+- 多人图片：5-10 秒
+- 批量处理：平均每张 4 秒
+
+### 资源占用
+- 内存：2-4GB RAM
+- 存储：856MB 模型权重
+- GPU：可选，建议使用以加速处理
+
+## 算法参数说明
+
+### 暴露检测阈值
+- `min_intersection_ratio`：皮肤与胸部区域交集比例阈值
+- `min_intersection_area`：交集面积像素阈值
+- `min_confidence_threshold`：整体检测置信度阈值
+
+### 形态学操作
+- `morphology_kernel_size`：形态学操作核大小，影响噪点去除效果
+- `opening_iterations`：开运算次数，去除小噪点
+- `closing_iterations`：闭运算次数，填补空洞
+
+### 马赛克处理
+- `mosaic_block_size`：马赛克块大小，数值越大越模糊
+- `mosaic_intensity`：马赛克强度，1.0 为完全马赛克，0.0 为无效果
+
+## 故障排除
+
+### SAM2 加载失败
 ```bash
-black chest_exposure_analyzer/
-flake8 chest_exposure_analyzer/
-```
-
-### Adding New Features
-The modular architecture makes it easy to:
-- Replace detection models (implement `YoloDetector` interface)
-- Add segmentation models (implement `SamSegmenter` interface)
-- Create custom prompt generators (extend `PromptGenerator`)
-- Add new visualizations (extend `VisualizationUtils`)
-
-## 📈 Performance
-
-### Typical Processing Times (CPU)
-- **Single person image**: 3-5 seconds
-- **Multi-person image**: 5-10 seconds
-- **Batch processing**: ~4 seconds per image average
-
-### Resource Usage
-- **Memory**: ~2-4GB RAM for large images
-- **Storage**: ~856MB for SAM2 model weights
-- **GPU**: Optional but recommended for faster processing
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make changes and add tests
-4. Run quality checks: `black . && flake8 . && pytest`
-5. Submit a pull request
-
-## 📄 License
-
-This project is intended for defensive security and content moderation purposes. Please review the licensing terms before use.
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**SAM2 not loading:**
-```bash
-# Verify SAM2 installation
-source NSFW-RegionNet/bin/activate
+# 验证 SAM2 安装
 python -c "import sam2; print('SAM2 OK')"
 
-# Re-download weights if corrupted
+# 重新下载权重文件
 rm chest_exposure_analyzer/weights/sam2_hiera_large.pt
 curl -L https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt \
   -o chest_exposure_analyzer/weights/sam2_hiera_large.pt
 ```
 
-**Memory issues:**
-- Use smaller SAM2 model variant in config
-- Process images individually instead of batch mode
-- Resize large images before processing
+### 内存不足
+- 使用较小的 SAM2 模型
+- 逐张处理图片而非批量处理
+- 预先压缩大尺寸图片
 
-**Dependencies conflicts:**
+### 依赖冲突
 ```bash
-# Clean reinstall
+# 清理重装
 rm -rf NSFW-RegionNet/
 python setup.py
 ```
 
-## 📞 Support
+## 开发测试
 
-For issues related to:
-- **SAM2**: [Facebook SAM2 Repository](https://github.com/facebookresearch/segment-anything-2)
-- **YOLO11**: [Ultralytics Documentation](https://docs.ultralytics.com/)
-- **This project**: Create an issue in this repository
-
----
-
-**⚡ Quick Test:**
 ```bash
-source NSFW-RegionNet/bin/activate && python chest_exposure_analyzer/main.py --demo
+# 运行测试
+pytest chest_exposure_analyzer/tests/
+
+# 代码格式化
+black chest_exposure_analyzer/
+flake8 chest_exposure_analyzer/
 ```
+
+本系统专为内容过滤和平台安全而设计，提供本地化处理，无数据外传，支持灵活的阈值配置以适应不同使用场景。

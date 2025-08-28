@@ -454,6 +454,127 @@ class ChestExposurePipeline:
 
         return should_copy
 
+    def process_for_deployment(
+        self, input_dir: str, output_dir: str, preserve_structure: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Official processing function for deployment - outputs clean final results.
+        
+        For images with exposure: outputs mosaicked version
+        For images without exposure: outputs original image
+        
+        Args:
+            input_dir: Directory containing input images
+            output_dir: Directory to save final processed images
+            preserve_structure: Whether to preserve subdirectory structure
+            
+        Returns:
+            Dictionary with processing statistics
+        """
+        if not os.path.exists(input_dir):
+            raise FileNotFoundError(f"Input directory not found: {input_dir}")
+            
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get all image files
+        image_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+        image_files = []
+        
+        for root, _, files in os.walk(input_dir):
+            for file_name in files:
+                if any(file_name.lower().endswith(ext) for ext in image_extensions):
+                    image_path = os.path.join(root, file_name)
+                    relative_path = os.path.relpath(image_path, input_dir)
+                    image_files.append((image_path, relative_path))
+        
+        if not image_files:
+            print(f"No image files found in {input_dir}")
+            return {"processed": 0, "exposed": 0, "errors": 0, "files": []}
+        
+        print(f"Processing {len(image_files)} images for deployment...")
+        print(f"Input: {input_dir}")
+        print(f"Output: {output_dir}")
+        print("=" * 60)
+        
+        stats = {
+            "processed": 0,
+            "exposed": 0, 
+            "errors": 0,
+            "files": []
+        }
+        
+        for image_path, relative_path in image_files:
+            try:
+                print(f"Processing: {relative_path}")
+                
+                # Load original image
+                original_image = cv2.imread(image_path)
+                if original_image is None:
+                    print(f"  Could not load image")
+                    stats["errors"] += 1
+                    continue
+                
+                # Process through pipeline  
+                results = self.process_image(image_path)
+                
+                # Determine output image
+                has_exposure = False
+                final_image = original_image.copy()
+                
+                # Check for exposure and apply mosaic if needed
+                if results.get("exposure_analysis"):
+                    for analysis in results["exposure_analysis"]:
+                        if analysis.get("is_exposed", False) and "mask3_refined" in analysis:
+                            has_exposure = True
+                            mask3_refined = analysis["mask3_refined"]
+                            # Apply mosaic to this person's exposed regions
+                            final_image = self.chest_analyzer.apply_mosaic_to_regions(
+                                final_image, mask3_refined
+                            )
+                
+                # Determine output path
+                if preserve_structure:
+                    output_path = os.path.join(output_dir, relative_path)
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                else:
+                    filename = os.path.basename(relative_path)
+                    output_path = os.path.join(output_dir, filename)
+                
+                # Save final image
+                cv2.imwrite(output_path, final_image)
+                
+                # Update stats
+                stats["processed"] += 1
+                if has_exposure:
+                    stats["exposed"] += 1
+                    status = "MOSAICKED"
+                else:
+                    status = "ORIGINAL"
+                
+                stats["files"].append({
+                    "input": relative_path,
+                    "output": os.path.relpath(output_path, output_dir),
+                    "exposed": has_exposure,
+                    "persons": len(results.get("detections", []))
+                })
+                
+                print(f"  {status} → {os.path.basename(output_path)}")
+                
+            except Exception as e:
+                print(f"  Error: {e}")
+                stats["errors"] += 1
+                continue
+        
+        print("\n" + "=" * 60)
+        print(f"Deployment Processing Complete:")
+        print(f"  Successfully processed: {stats['processed']}")
+        print(f"  Images with exposure (mosaicked): {stats['exposed']}")
+        print(f"  Clean images (original): {stats['processed'] - stats['exposed']}")
+        print(f"  Errors: {stats['errors']}")
+        print(f"  Output directory: {output_dir}")
+        
+        return stats
+
     def get_pipeline_info(self) -> Dict[str, Any]:
         """Get information about the pipeline configuration and models."""
         return {

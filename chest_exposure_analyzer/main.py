@@ -91,6 +91,36 @@ def run_single_image(image_path: str, output_dir: str = None):
         return 1
 
 
+def run_deployment_processing(input_dir: str, output_dir: str):
+    """Run deployment processing - outputs clean final images."""
+    if not os.path.exists(input_dir):
+        print(f"Input directory not found: {input_dir}")
+        return 1
+    
+    print("Starting Deployment Processing")
+    print("=" * 50)
+    print("This mode outputs clean final images:")
+    print("• Images with exposure → Mosaicked versions")
+    print("• Clean images → Original versions")
+    print()
+    
+    try:
+        pipeline = ChestExposurePipeline()
+        stats = pipeline.process_for_deployment(input_dir, output_dir)
+        
+        print(f"\n🎯 Deployment Processing Summary:")
+        print(f"✅ Total processed: {stats['processed']}")
+        print(f"🔴 Mosaicked (had exposure): {stats['exposed']}")
+        print(f"🟢 Original (clean): {stats['processed'] - stats['exposed']}")
+        print(f"❌ Errors: {stats['errors']}")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Deployment processing failed: {e}")
+        return 1
+
+
 def main():
     """Main function to run the chest exposure analysis pipeline."""
     parser = argparse.ArgumentParser(
@@ -101,6 +131,7 @@ Examples:
   python chest_exposure_analyzer/main.py --demo
   python chest_exposure_analyzer/main.py --image path/to/image.jpg
   python chest_exposure_analyzer/main.py --image path/to/image.jpg --output custom_output/
+  python chest_exposure_analyzer/main.py --deploy input_folder/ output_folder/
         """,
     )
 
@@ -115,6 +146,13 @@ Examples:
     parser.add_argument(
         "--output", "-o", type=str, help="Custom output directory (optional)"
     )
+    
+    parser.add_argument(
+        "--deploy", 
+        nargs=2,
+        metavar=('INPUT_DIR', 'OUTPUT_DIR'),
+        help="Deployment mode: process input directory and output clean final images"
+    )
 
     parser.add_argument(
         "--version", "-v", action="version", version="NSFW-RegionNet v1.0.0"
@@ -123,13 +161,18 @@ Examples:
     args = parser.parse_args()
 
     # Show help if no arguments provided
-    if not any([args.demo, args.image]):
+    if not any([args.demo, args.image, args.deploy]):
         parser.print_help()
         return 0
 
     # Run demo mode
     if args.demo:
         return run_demo()
+
+    # Run deployment processing
+    if args.deploy:
+        input_dir, output_dir = args.deploy
+        return run_deployment_processing(input_dir, output_dir)
 
     # Process single image
     if args.image:
