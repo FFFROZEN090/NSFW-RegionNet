@@ -61,7 +61,7 @@ class PromptGenerator:
     @staticmethod
     def _get_face_triangle_center(detection: DetectionResult) -> Optional[List[int]]:
         """
-        Calculate the center of triangle formed by eyes and nose.
+        Calculate the center of triangle formed by TWO EYES and NOSE.
         
         Args:
             detection: Detection result containing keypoints
@@ -73,24 +73,24 @@ class PromptGenerator:
         left_eye = detection.get_keypoint_by_label('left_eye')
         right_eye = detection.get_keypoint_by_label('right_eye')
         
-        # Need at least nose and one eye
-        if not nose or nose.score < 0.3:
-            return None
-            
-        valid_points = [nose]
-        
-        if left_eye and left_eye.score > 0.3:
-            valid_points.append(left_eye)
-        if right_eye and right_eye.score > 0.3:
-            valid_points.append(right_eye)
-        
-        # Need at least 2 points to form a meaningful center
-        if len(valid_points) < 2:
+        # MUST have ALL THREE points: nose + left_eye + right_eye
+        if not (nose and left_eye and right_eye):
             return None
         
-        # Calculate centroid of the valid facial keypoints
-        center_x = int(sum(point.x for point in valid_points) / len(valid_points))
-        center_y = int(sum(point.y for point in valid_points) / len(valid_points))
+        # Check confidence scores for all three points
+        if not (nose.score > 0.3 and left_eye.score > 0.3 and right_eye.score > 0.3):
+            return None
+        
+        # Calculate the centroid of the triangle formed by nose + left_eye + right_eye
+        triangle_vertices = [
+            [nose.x, nose.y],
+            [left_eye.x, left_eye.y], 
+            [right_eye.x, right_eye.y]
+        ]
+        
+        # Triangle centroid = (P1 + P2 + P3) / 3
+        center_x = int((nose.x + left_eye.x + right_eye.x) / 3)
+        center_y = int((nose.y + left_eye.y + right_eye.y) / 3)
         
         return [center_x, center_y]
     
