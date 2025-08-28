@@ -1,0 +1,44 @@
+# Configuration for chest exposure analyzer
+
+# Model paths
+models:
+  yolo_model_path: "weights/yolov11l-pose.pt"
+  sam2_model_path: "weights/sam2_hiera_large.pt"
+  sam2_model_type: "sam2_hiera_large"
+
+# Detection parameters
+detection:
+  confidence_threshold: 0.5
+  iou_threshold: 0.45
+  max_detections: 10
+
+# Segmentation parameters (SAM2)
+segmentation:
+  points_per_side: 32
+  pred_iou_thresh: 0.88
+  stability_score_thresh: 0.95
+  crop_n_layers: 0
+  crop_n_points_downscale_factor: 1
+  min_mask_region_area: 0
+  # SAM2 specific parameters
+  multimask_output: true
+  use_m2m: false
+
+# Chest analysis parameters
+analysis:
+  chest_triangle_expansion_factor: 1.2
+  min_connected_component_area: 100
+  morphological_operations: true
+
+# Visualization settings
+visualization:
+  keypoint_radius: 5
+  line_thickness: 2
+  alpha_overlay: 0.5
+  save_intermediate_steps: true
+
+# I/O paths
+paths:
+  input_dir: "data/input"
+  output_dir: "data/output"
+  weights_dir: "weights"
