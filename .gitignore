@@ -158,7 +158,8 @@ weights/*.pt
 weights/*.pth
 weights/*.onnx
 
-# Data directories
+# Data directories (ignore all data content but keep structure)
+data/
 chest_exposure_analyzer/data/input/*
 chest_exposure_analyzer/data/output/*
 !chest_exposure_analyzer/data/input/.gitkeep

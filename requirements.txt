@@ -1,7 +1,7 @@
 # Core ML libraries
 torch>=2.0.0
 torchvision>=0.15.0
-numpy>=1.21.0
+numpy>=1.21.0,<2.3.0  # OpenCV compatibility
 opencv-python>=4.8.0
 pillow>=9.0.0
 
@@ -11,6 +11,12 @@ ultralytics>=8.0.0
 # Segment Anything Model 2
 SAM-2 @ git+https://github.com/facebookresearch/segment-anything-2.git
 
+# SAM2 Dependencies (automatically installed with SAM-2, but listed for clarity)
+hydra-core>=1.3.2
+iopath>=0.1.10
+omegaconf>=2.2,<2.4
+antlr4-python3-runtime==4.9.*
+
 # Image processing and visualization
 matplotlib>=3.5.0
 scikit-image>=0.19.0
@@ -19,9 +25,15 @@ scikit-image>=0.19.0
 pyyaml>=6.0
 pydantic>=2.0.0
 tqdm>=4.64.0
+
+# Development and testing
 pytest>=7.0.0
 black>=22.0.0
 flake8>=5.0.0
+
+# Additional utilities
+requests>=2.23.0
+scipy>=1.4.1
 
 # Optional: Web API support (uncomment if needed)
 # fastapi>=0.95.0
