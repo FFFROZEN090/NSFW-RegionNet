@@ -21,6 +21,8 @@ class ChestExposureAnalyzer:
         morphology_kernel_size: int = 5,
         opening_iterations: int = 1,
         closing_iterations: int = 2,
+        mosaic_block_size: int = 15,
+        mosaic_intensity: float = 1.0,
     ):
         """
         Initialize chest exposure analyzer.
@@ -31,12 +33,16 @@ class ChestExposureAnalyzer:
             morphology_kernel_size: Size of morphological operation kernel
             opening_iterations: Number of opening iterations to remove noise
             closing_iterations: Number of closing iterations to fill gaps
+            mosaic_block_size: Size of mosaic blocks for censoring
+            mosaic_intensity: Intensity of mosaic effect (1.0 = full mosaic, 0.0 = no effect)
         """
         self.min_intersection_ratio = min_intersection_ratio
         self.min_intersection_area = min_intersection_area
         self.morphology_kernel_size = morphology_kernel_size
         self.opening_iterations = opening_iterations
         self.closing_iterations = closing_iterations
+        self.mosaic_block_size = mosaic_block_size
+        self.mosaic_intensity = mosaic_intensity
 
     def analyze_chest_exposure(
         self,
@@ -160,6 +166,165 @@ class ChestExposureAnalyzer:
         
         # Convert back to boolean for consistency
         return refined_mask > 0
+
+    def apply_mosaic_to_regions(
+        self, image: np.ndarray, mask3_refined: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply mosaic effect to regions defined by mask3_refined.
+
+        Args:
+            image: Original image to apply mosaic to
+            mask3_refined: Boolean mask defining regions to mosaic
+
+        Returns:
+            Image with mosaic applied to masked regions
+        """
+        if not np.any(mask3_refined):
+            # No regions to mosaic
+            return image.copy()
+
+        mosaic_image = image.copy()
+        h, w = image.shape[:2]
+
+        # Get bounding box of all masked regions for efficiency
+        y_coords, x_coords = np.where(mask3_refined)
+        if len(y_coords) == 0:
+            return mosaic_image
+
+        # Process mosaic in blocks
+        for y in range(0, h, self.mosaic_block_size):
+            for x in range(0, w, self.mosaic_block_size):
+                # Define block boundaries
+                y_end = min(y + self.mosaic_block_size, h)
+                x_end = min(x + self.mosaic_block_size, w)
+
+                # Check if this block intersects with mask
+                block_mask = mask3_refined[y:y_end, x:x_end]
+                if np.any(block_mask):
+                    # Calculate average color for this block
+                    block = image[y:y_end, x:x_end]
+                    if len(block.shape) == 3:
+                        # Color image
+                        avg_color = np.mean(block, axis=(0, 1)).astype(np.uint8)
+                        # Apply mosaic only to masked pixels in this block
+                        for by in range(block.shape[0]):
+                            for bx in range(block.shape[1]):
+                                if block_mask[by, bx]:
+                                    # Blend original and mosaic based on intensity
+                                    original_color = mosaic_image[y + by, x + bx]
+                                    mosaic_color = avg_color
+                                    blended_color = (
+                                        original_color * (1 - self.mosaic_intensity)
+                                        + mosaic_color * self.mosaic_intensity
+                                    ).astype(np.uint8)
+                                    mosaic_image[y + by, x + bx] = blended_color
+                    else:
+                        # Grayscale image
+                        avg_color = np.mean(block).astype(np.uint8)
+                        for by in range(block.shape[0]):
+                            for bx in range(block.shape[1]):
+                                if block_mask[by, bx]:
+                                    original_color = mosaic_image[y + by, x + bx]
+                                    mosaic_color = avg_color
+                                    blended_color = (
+                                        original_color * (1 - self.mosaic_intensity)
+                                        + mosaic_color * self.mosaic_intensity
+                                    ).astype(np.uint8)
+                                    mosaic_image[y + by, x + bx] = blended_color
+
+        return mosaic_image
+
+    def create_mosaic_comparison_visualization(
+        self,
+        original_image: np.ndarray,
+        mask3_refined: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Create before/after comparison of mosaic processing.
+
+        Args:
+            original_image: Original input image
+            mask3_refined: Refined mask3 defining regions to mosaic
+
+        Returns:
+            Side-by-side comparison of original vs mosaicked image
+        """
+        h, w = original_image.shape[:2]
+
+        # Create side-by-side comparison
+        comparison_img = np.zeros((h, w * 2, 3), dtype=np.uint8)
+
+        # Left side: Original image
+        left_img = original_image.copy()
+        comparison_img[:, :w] = left_img
+
+        # Right side: Image with mosaic applied
+        right_img = self.apply_mosaic_to_regions(original_image, mask3_refined)
+        comparison_img[:, w:] = right_img
+
+        # Add labels
+        cv2.putText(
+            comparison_img,
+            "Original",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+        )
+
+        cv2.putText(
+            comparison_img,
+            "Mosaicked",
+            (w + 10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+        )
+
+        # Add mosaic region outline on both sides for reference
+        if np.any(mask3_refined):
+            # Find contours of the mask
+            mask_uint8 = (mask3_refined * 255).astype(np.uint8)
+            contours, _ = cv2.findContours(
+                mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            # Draw contours on both sides
+            cv2.drawContours(comparison_img[:, :w], contours, -1, (0, 255, 0), 2)
+            # Shift contours for right side
+            contours_shifted = []
+            for contour in contours:
+                shifted_contour = contour.copy()
+                shifted_contour[:, :, 0] += w  # Shift x coordinates
+                contours_shifted.append(shifted_contour)
+            cv2.drawContours(comparison_img, contours_shifted, -1, (0, 255, 0), 2)
+
+        # Add statistics
+        masked_area = np.sum(mask3_refined)
+        cv2.putText(
+            comparison_img,
+            f"Censored Area: {masked_area}px",
+            (10, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+        )
+
+        cv2.putText(
+            comparison_img,
+            f"Block Size: {self.mosaic_block_size}px",
+            (w + 10, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+        )
+
+        return comparison_img
 
     def _calculate_analysis_confidence(
         self,

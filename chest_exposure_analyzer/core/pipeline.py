@@ -39,6 +39,8 @@ class ChestExposurePipeline:
             morphology_kernel_size=self.config["exposure_detection"]["morphology_kernel_size"],
             opening_iterations=self.config["exposure_detection"]["opening_iterations"],
             closing_iterations=self.config["exposure_detection"]["closing_iterations"],
+            mosaic_block_size=self.config["exposure_detection"]["mosaic_block_size"],
+            mosaic_intensity=self.config["exposure_detection"]["mosaic_intensity"],
         )
 
         # Initialize utilities
@@ -406,6 +408,17 @@ class ChestExposurePipeline:
                     )
                     morphology_path = os.path.join(output_dir, "morphology_comparison.png")
                     cv2.imwrite(morphology_path, morphology_comparison)
+
+                # Save mosaic comparison if exposure detected and enabled
+                if (self.config["exposure_detection"]["save_mosaic_comparison"] 
+                    and analysis_result["is_exposed"] 
+                    and "mask3_refined" in analysis_result):
+                    mosaic_comparison = self.chest_analyzer.create_mosaic_comparison_visualization(
+                        image,
+                        analysis_result["mask3_refined"]
+                    )
+                    mosaic_path = os.path.join(output_dir, "mosaic_comparison.png")
+                    cv2.imwrite(mosaic_path, mosaic_comparison)
 
             # Add to results
             exposure_results.append(analysis_result)

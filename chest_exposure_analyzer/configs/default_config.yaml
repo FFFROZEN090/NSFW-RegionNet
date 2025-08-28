@@ -41,6 +41,11 @@ exposure_detection:
   morphology_kernel_size: 5     # Size of morphological operation kernel
   opening_iterations: 1         # Opening iterations to remove noise
   closing_iterations: 2         # Closing iterations to fill gaps
+  
+  # Mosaic censoring parameters
+  mosaic_block_size: 15         # Size of mosaic blocks in pixels
+  mosaic_intensity: 1.0         # Mosaic intensity (1.0 = full mosaic, 0.0 = no effect)
+  save_mosaic_comparison: true  # Save before/after mosaic comparison
 
 # Visualization settings
 visualization:
