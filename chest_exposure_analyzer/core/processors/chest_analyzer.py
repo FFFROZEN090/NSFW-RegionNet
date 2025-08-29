@@ -52,21 +52,34 @@ class ChestExposureAnalyzer:
 
     def analyze_chest_exposure(
         self,
-        sam2_skin_mask: np.ndarray,
-        chest_triangle_mask: np.ndarray,
+        sam2_skin_mask: Optional[np.ndarray],
+        chest_triangle_mask: Optional[np.ndarray],
         detection: DetectionResult,
     ) -> Dict[str, Any]:
         """
         Analyze chest exposure by detecting intersection between skin and chest triangle masks.
 
         Args:
-            sam2_skin_mask: SAM2 segmented skin region mask (boolean array)
-            chest_triangle_mask: Chest triangle geometry mask (boolean array)
+            sam2_skin_mask: SAM2 segmented skin region mask (boolean array) or None
+            chest_triangle_mask: Chest triangle geometry mask (boolean array) or None  
             detection: Detection result containing keypoints
 
         Returns:
             Dictionary containing exposure analysis results
         """
+        # Early return if person is not facing forward (masks will be None)
+        if sam2_skin_mask is None or chest_triangle_mask is None:
+            return {
+                "is_exposed": False,
+                "intersection_area": 0,
+                "intersection_ratio": 0.0,
+                "chest_area": 0,
+                "skin_area": 0,
+                "intersection_mask": None,
+                "processed_mask": None,
+                "confidence_score": 0.0,
+                "reason": "Non-frontal face detected, skipped analysis"
+            }
         # Ensure masks are boolean
         if sam2_skin_mask.dtype != bool:
             skin_mask = sam2_skin_mask > 0

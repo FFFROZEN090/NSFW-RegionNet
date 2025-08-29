@@ -184,6 +184,20 @@ class ChestExposurePipeline:
 
         print(f"Processing Person {person_id}...")
 
+        # Step 1: Check face orientation first
+        if not self.prompt_generator._is_facing_forward(detection):
+            print(f"  Person {person_id} is not facing forward - skipping all processing")
+            return {
+                "person_id": person_id,
+                "detection": detection,
+                "prompts": None,
+                "segmentation_mask": None,
+                "chest_triangle_mask": None,
+                "output_dir": output_dir,
+                "skipped": True,
+                "skip_reason": "non_frontal_face"
+            }
+
         result = {
             "person_id": person_id,
             "detection": detection,
@@ -191,6 +205,8 @@ class ChestExposurePipeline:
             "segmentation_mask": None,
             "chest_triangle_mask": None,
             "output_dir": output_dir,
+            "skipped": False,
+            "skip_reason": None
         }
 
         # Step 2: Generate prompts from keypoints
@@ -220,11 +236,16 @@ class ChestExposurePipeline:
         else:
             print(f"  Segmentation failed for Person {person_id}")
 
-        # Step 3.5: Generate chest triangle mask for analysis
-        chest_triangle_mask = self.prompt_generator.generate_chest_triangle_mask(
-            detection, (image.shape[0], image.shape[1])
-        )
-        result["chest_triangle_mask"] = chest_triangle_mask
+        # Step 3.5: Generate chest triangle mask for analysis (only for frontal faces)
+        if len(points) > 0:  # Only if person was facing forward
+            chest_triangle_mask = self.prompt_generator.generate_chest_triangle_mask(
+                detection, (image.shape[0], image.shape[1])
+            )
+            result["chest_triangle_mask"] = chest_triangle_mask
+        else:
+            # Skip chest analysis for non-frontal faces
+            print(f"  Skipping chest triangle generation for non-frontal Person {person_id}")
+            result["chest_triangle_mask"] = None
 
         # Step 4: Save visualizations
         if self.config["visualization"]["save_intermediate_steps"]:
@@ -292,8 +313,12 @@ class ChestExposurePipeline:
         summary_img = self.visualizer.draw_keypoints(summary_img, detections)
         summary_img = self.visualizer.draw_bounding_boxes(summary_img, detections)
 
-        # Draw all segmentation masks
+        # Draw all segmentation masks (only for processed persons)
         for i, seg_result in enumerate(results["segmentation_results"]):
+            # Skip drawing mask for non-frontal persons
+            if seg_result.get("skipped", False):
+                continue
+                
             if seg_result["segmentation_mask"] is not None:
                 # Use different colors for different people
                 colors = [
@@ -376,6 +401,11 @@ class ChestExposurePipeline:
         exposure_results = []
 
         for seg_result in results["segmentation_results"]:
+            # Skip if person was not processed (non-frontal face)
+            if seg_result.get("skipped", False):
+                print(f"  Skipping exposure analysis for Person {seg_result['person_id']} - {seg_result.get('skip_reason', 'unknown reason')}")
+                continue
+                
             # Get masks
             sam2_mask = seg_result.get("segmentation_mask")
             chest_mask = seg_result.get("chest_triangle_mask")

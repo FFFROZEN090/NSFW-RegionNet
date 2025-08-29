@@ -35,27 +35,72 @@ class PromptGenerator:
         points = []
         labels = []
 
-        # 1. Get positive point (eyes + nose triangle center)
+        # 1. Get positive point (eyes + nose triangle center) - assumes frontal face check done at pipeline level
         face_center = PromptGenerator._get_face_triangle_center(detection)
         if face_center:
             points.append(face_center)
             labels.append(1)
+            print(f"  Added face triangle center prompt at {face_center}")
 
         # 2. Get negative point (clothing center)
         clothing_point = PromptGenerator._get_clothing_center(detection)
         if clothing_point:
             points.append(clothing_point)
             labels.append(0)
+            print(f"  Added clothing center negative prompt at {clothing_point}")
 
-        # 3. Fallback if no valid points generated
+        # 3. Fallback if no valid points generated (should not happen for frontal faces)
         if not points:
-            # Emergency fallback: use center of bounding box
+            # Emergency fallback: use center of bounding box  
             x1, y1, x2, y2 = detection.bbox
             fallback_point = [int((x1 + x2) / 2), int((y1 + y2) / 2)]
             points.append(fallback_point)
             labels.append(1)
+            print(f"  Using fallback prompt at {fallback_point}")
 
         return np.array(points, dtype=np.float32), np.array(labels, dtype=np.int32)
+
+    @staticmethod
+    def _is_facing_forward(detection: DetectionResult) -> bool:
+        """
+        Determine if a person is facing forward based on facial keypoint confidence.
+        Uses 3-region detection: center (nose), left (eye/ear), right (eye/ear).
+        
+        Args:
+            detection: Detection result containing keypoints
+            
+        Returns:
+            True if person is facing forward (all 3 regions have confident keypoints)
+        """
+        confidence_threshold = 0.6
+        
+        # Region 1: Center - nose must be confident
+        nose = detection.get_keypoint_by_label("nose")
+        if not nose or nose.score < confidence_threshold:
+            return False
+            
+        # Region 2: Left side - either left_eye or left_ear must be confident  
+        left_eye = detection.get_keypoint_by_label("left_eye")
+        left_ear = detection.get_keypoint_by_label("left_ear")
+        
+        left_region_confident = (
+            (left_eye and left_eye.score >= confidence_threshold) or
+            (left_ear and left_ear.score >= confidence_threshold)
+        )
+        
+        if not left_region_confident:
+            return False
+            
+        # Region 3: Right side - either right_eye or right_ear must be confident
+        right_eye = detection.get_keypoint_by_label("right_eye")  
+        right_ear = detection.get_keypoint_by_label("right_ear")
+        
+        right_region_confident = (
+            (right_eye and right_eye.score >= confidence_threshold) or
+            (right_ear and right_ear.score >= confidence_threshold)
+        )
+        
+        return right_region_confident
 
     @staticmethod
     def _get_face_triangle_center(detection: DetectionResult) -> Optional[List[int]]:

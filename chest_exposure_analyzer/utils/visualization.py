@@ -11,6 +11,7 @@ import matplotlib.patches as patches
 from matplotlib.colors import ListedColormap
 
 from ..core.data_models import DetectionResult, Keypoint
+from ..core.processors.prompt_generator import PromptGenerator
 
 
 class VisualizationUtils:
@@ -87,6 +88,38 @@ class VisualizationUtils:
 
         # Process each detection
         for detection in detections:
+            # Check face orientation and draw label
+            is_frontal = PromptGenerator._is_facing_forward(detection)
+            orientation_label = "FRONTAL" if is_frontal else "NON-FRONTAL"
+            orientation_color = (0, 255, 0) if is_frontal else (0, 0, 255)  # Green for frontal, Red for non-frontal
+            
+            # Get bounding box for label placement
+            x1, y1, x2, y2 = detection.bbox
+            
+            # Draw orientation label at top of bounding box
+            label_text = f"Person {detection.person_id}: {orientation_label}"
+            text_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+            
+            # Draw background rectangle for better readability
+            cv2.rectangle(
+                img_copy,
+                (x1, y1 - 30),
+                (x1 + text_size[0] + 10, y1 - 5),
+                orientation_color,
+                -1
+            )
+            
+            # Draw orientation text
+            cv2.putText(
+                img_copy,
+                label_text,
+                (x1 + 5, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),  # White text
+                2
+            )
+            
             # Draw skeleton connections first (so they appear under keypoints)
             if draw_skeleton:
                 img_copy = VisualizationUtils._draw_skeleton(
