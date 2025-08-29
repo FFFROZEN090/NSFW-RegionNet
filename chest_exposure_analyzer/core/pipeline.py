@@ -607,6 +607,97 @@ class ChestExposurePipeline:
         
         return stats
 
+    def process_single_image_file(
+        self, image_path: str, output_dir: str = None
+    ) -> Dict[str, Any]:
+        """
+        Process a single image file and return clean result with mosaic if needed.
+        
+        This is the main API function for single image processing.
+        
+        Args:
+            image_path: Path to input image file
+            output_dir: Output directory (optional, defaults to same dir as input)
+            
+        Returns:
+            Dictionary containing:
+            - needs_mosaic: bool - Whether image contains chest exposure
+            - original_path: str - Path to original image 
+            - output_path: str - Path to processed image
+            - status: str - "ORIGINAL" or "MOSAICKED"
+            - person_count: int - Number of persons processed
+            - frontal_person_count: int - Number of frontal persons analyzed
+        """
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+            
+        # Determine output directory
+        if output_dir is None:
+            output_dir = os.path.dirname(image_path)
+        else:
+            os.makedirs(output_dir, exist_ok=True)
+            
+        # Load original image
+        original_image = cv2.imread(image_path)
+        if original_image is None:
+            raise ValueError(f"Could not load image: {image_path}")
+            
+        print(f"Processing image: {os.path.basename(image_path)}")
+        
+        # Process through pipeline
+        results = self.process_image(image_path)
+        
+        # Analyze results for exposure
+        has_exposure = False
+        final_image = original_image.copy()
+        frontal_person_count = 0
+        
+        if results.get("exposure_analysis"):
+            for analysis in results["exposure_analysis"]:
+                frontal_person_count += 1  # Only frontal persons get analyzed
+                if analysis.get("is_exposed", False) and "mask3_refined" in analysis:
+                    has_exposure = True
+                    mask3_refined = analysis["mask3_refined"]
+                    # Apply mosaic to this person's exposed regions
+                    final_image = self.chest_analyzer.apply_mosaic_to_regions(
+                        final_image, mask3_refined
+                    )
+        
+        # Generate output filename with status indicator
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        file_ext = os.path.splitext(image_path)[1]
+        
+        if has_exposure:
+            output_filename = f"{base_name}_MOSAICKED{file_ext}"
+            status = "MOSAICKED"
+        else:
+            output_filename = f"{base_name}_ORIGINAL{file_ext}"
+            status = "ORIGINAL"
+            
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Save final image
+        cv2.imwrite(output_path, final_image)
+        
+        total_persons = len(results.get("detections", []))
+        
+        result_info = {
+            "needs_mosaic": has_exposure,
+            "original_path": image_path,
+            "output_path": output_path,
+            "status": status,
+            "person_count": total_persons,
+            "frontal_person_count": frontal_person_count
+        }
+        
+        print(f"✅ Processing complete:")
+        print(f"   Status: {status}")
+        print(f"   Persons detected: {total_persons}")
+        print(f"   Frontal persons analyzed: {frontal_person_count}")
+        print(f"   Output saved: {output_filename}")
+        
+        return result_info
+
     def get_pipeline_info(self) -> Dict[str, Any]:
         """Get information about the pipeline configuration and models."""
         return {
